@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint global-require: off, no-console: off, promise/always-return: off */
 
 /**
@@ -11,7 +12,14 @@
 import 'core-js/stable';
 import 'regenerator-runtime/runtime';
 import path from 'path';
-import { app, BrowserWindow, shell, ipcMain } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  shell,
+  ipcMain,
+  desktopCapturer,
+  screen,
+} from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import MenuBuilder from './menu';
@@ -26,6 +34,12 @@ export default class AppUpdater {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let captureImage;
+
+const MinimizeAppState = {
+  width: 620,
+  height: 600,
+};
 
 ipcMain.on('ipc-example', async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
@@ -68,20 +82,46 @@ const createWindow = async () => {
     : path.join(__dirname, '../../assets');
 
   const getAssetPath = (...paths: string[]): string => {
+    console.log(RESOURCES_PATH);
     return path.join(RESOURCES_PATH, ...paths);
   };
 
   mainWindow = new BrowserWindow({
     show: false,
-    width: 1024,
-    height: 728,
+    ...MinimizeAppState,
     icon: getAssetPath('icon.png'),
+    center: true,
+    darkTheme: true,
     webPreferences: {
+      nodeIntegration: true,
+      enableRemoteModule: true,
+      contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
+  const config = {
+    types: ['screen'],
+    thumbnailSize: {
+      width: 800,
+      height: 600,
+    },
+  };
+
   mainWindow.loadURL(resolveHtmlPath('index.html'));
+
+  desktopCapturer
+    .getSources(config)
+    .then((data) => {
+      const { thumbnail } = data[0];
+      // eslint-disable-next-line no-buffer-constructor
+      captureImage = Buffer.from(thumbnail.toDataURL(), 'base64');
+    })
+    .catch(console.log);
+
+  ipcMain.on('synchronous-message', (event, arg) => {
+    event.returnValue = screen.getCursorScreenPoint();
+  });
 
   mainWindow.on('ready-to-show', () => {
     if (!mainWindow) {
@@ -106,6 +146,9 @@ const createWindow = async () => {
     event.preventDefault();
     shell.openExternal(url);
   });
+
+  // esconder el menu
+  mainWindow.removeMenu();
 
   // Remove this if your app does not use auto updates
   // eslint-disable-next-line
